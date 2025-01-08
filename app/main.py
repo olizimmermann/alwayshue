@@ -8,7 +8,7 @@ app = FastAPI(title="Hue API", description="Control Philips Hue lights", version
 
 # Configure logging
 handler = RotatingFileHandler("app.log", maxBytes=10*1024*1024, backupCount=3)  # 10 MB max size, 3 backups
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", filename="app.log", handlers=[handler])
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", handlers=[handler])
 
 # Retrieve environment variables
 API_KEY = os.getenv("apikey")
