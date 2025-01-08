@@ -1,0 +1,7 @@
+services:
+  webserver:
+    build: .
+    ports:
+      - "8000:8000"
+    restart: always
+    env_file: ./app/.env  # Optional: Define environment variables in a file
