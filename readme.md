@@ -69,7 +69,7 @@ The application logs its activities to `app.log` within the container. To access
 1. Enter the running container:
 
    ```bash
-   docker exec -it smart-light-switch_webserver_1 bash
+   docker exec -it alwayshue_webserver_1 bash
    ```
 
 2. View the log file:
