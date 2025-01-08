@@ -101,3 +101,5 @@ This project is licensed under the MIT License.
 ---
 
 By following this guide, you can integrate your existing wall switches with Philips Hue lamps, maintaining smart functionality while using familiar controls. 
+
+---
