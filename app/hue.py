@@ -1,186 +1,122 @@
 #!/usr/bin/env python
-#
-# turn on or off hue groups
-#
-#
-#
 import requests
 import threading
+import logging
+from typing import Union, List, Optional
 
+logging.basicConfig(level=logging.INFO)
 
 class HueAction:
-
-    def __init__(self, ip, token, lamps=None, group=None):
+    def __init__(self, ip: str, token: str, lamps: Optional[List[int]] = None, group: Optional[int] = None):
         self.IP = ip
         self.TOKEN = token
-        self.BASE_URL = 'http://{0}/api/{1}/'.format(self.IP, self.TOKEN)
+        self.BASE_URL = f'http://{self.IP}/api/{self.TOKEN}/'
         self.LAMPS = lamps
         self.GROUP = group
 
-    def get_group(self):
-        """
-        Get current group state from hue bridge.
-        params:
-            group: [str] number of group
-        return:
-            if successful: [json] Data of group
-            if unsuccessful: [boolean] False
-        """
-        url = '{0}groups/{1}'.format(self.BASE_URL, self.GROUP)
-        # data = '{"on":false, "bri" : 100}'.format(resource)
-
+    def get_group(self) -> Union[dict, bool]:
+        """Fetch the current group state from the Hue Bridge."""
+        url = f'{self.BASE_URL}groups/{self.GROUP}'
         try:
             r = requests.get(url)
             if r.ok:
-                response = r.json()
-                return response
+                return r.json()
+            logging.error(f"Failed to fetch group {self.GROUP}. Status: {r.status_code}")
             return False
         except Exception as e:
+            logging.exception(f"Error fetching group {self.GROUP}: {e}")
             return False
 
-
-    def get_lamp(self, lamp):
-        """
-        Get current lamp state from hue bridge.
-        params:
-            lamp: [str] number of group
-        return:
-            if successful: [json] Data of group
-            if unsuccessful: [boolean] False
-        """
-        url = '{0}lights/{1}'.format(self.BASE_URL, lamp)
-        # data = '{"on":false, "bri" : 100}'.format(resource)
-
+    def get_lamp(self, lamp: int) -> Union[dict, bool]:
+        """Fetch the current lamp state from the Hue Bridge."""
+        url = f'{self.BASE_URL}lights/{lamp}'
         try:
             r = requests.get(url)
             if r.ok:
-                response = r.json()
-                return response
+                return r.json()
+            logging.error(f"Failed to fetch lamp {lamp}. Status: {r.status_code}")
             return False
         except Exception as e:
+            logging.exception(f"Error fetching lamp {lamp}: {e}")
             return False
 
+    def action_group(self, bri: int = 100) -> dict:
+        """Toggle group lights on or off based on current state."""
+        url = f'{self.BASE_URL}groups/{self.GROUP}/action'
+        group_response = self.get_group()
 
-    def action_group(self, bri=100):
-        """
-        changes light to on or off. depends of previous state
-        params:
-            group: [str] number of group
-            bri: [int] number of brightness
-        returns
-            if successful: [boolean] True
-            if unsuccessful: [boolean] False
-        """
-        url = '{0}groups/{1}/action'.format(self.BASE_URL, self.GROUP)
-        group_response = self.get_group(self.GROUP)
+        if group_response:
+            current_state = group_response['action']['on']
+            data = '{"on": false}' if current_state else '{"on": true, "bri": 100}'
+            success = self.send_put(url, data)
+            return {
+                'state_old': current_state,
+                'state_new': not current_state if success else current_state,
+                'group': self.GROUP
+            }
+        return {'state_old': False, 'state_new': False, 'error': 'No group found'}
 
-        if group_response is not False:
-            if group_response['action']['on'] == False:
-                data = '{"on":true, "bri" : 100}'
-                if self.send_put(url, data):
-                    return {'state_old': False, 'state_new': True, 'group': self.GROUP}
-                else:
-                    return {'state_old': False, 'state_new': False, 'error': 'Could not send put request'}
+    def action_lamp(self, lamp: int, state: Optional[bool] = None, bri: int = 100) -> bool:
+        """Toggle lamp state or set it explicitly."""
+        url = f'{self.BASE_URL}lights/{lamp}/state/'
+        lamp_response = self.get_lamp(lamp) if state is None else {'state': {'on': state}}
 
-            elif group_response['action']['on'] == True:
-                data = '{"on":false, "bri" : 100}'
-                if self.send_put(url, data):
-                    return {'state_old': True, 'state_new': False, 'group': self.GROUP}
-                else:
-                    return {'state_old': False, 'state_new': False, 'error': 'Could not send put request'}
-        else:
-            return {'state_old': False, 'state_new': False, 'error': 'No group found'}
+        if lamp_response:
+            current_state = lamp_response['state']['on']
+            new_state = not current_state if state is None else state
+            data = '{"on": true, "bri": 254}' if new_state else '{"on": false}'
+            return self.send_put(url, data)
+        return False
 
-
-    def action_lamp(self, lamp, nr, state=None, bri=100):
-        """
-        changes light to on or off. depends of previous state
-        params:
-            lamp: [str] number of lamp
-            bri: [int] number of brightness
-        returns
-            if successful: [boolean] True
-            if unsuccessful: [boolean] False
-        """
-        url = '{0}lights/{1}/state/'.format(self.BASE_URL, lamp)
-        if state is None:
-            lamp_response = self.get_lamp(lamp)
-        else:
-            lamp_response = {'state' : {'on': state}}
-        
-        if lamp_response is not False:
-
-            if lamp_response['state']['on'] == False:
-                data = '{"on":true, "bri": 254, "hue": 8895,"sat": 89}'
-                if self.send_put(url, data):
-                    return True
-                else:
-                    return False
-
-            elif lamp_response['state']['on'] == True:
-                data = '{"on":false, "bri": 100}'
-                if self.send_put(url, data):
-                    return True
-                else:
-                    return False
-
-
-    def send_put(self, url, data):
-        """
-        sends put/post request to hue
-        params:
-            url: [str] api call address
-            data: [str] body
-        returns
-            if successful: [boolean] True
-            if unsuccessful: [boolean] False
-        """
+    def send_put(self, url: str, data: str) -> bool:
+        """Send a PUT request to the Hue Bridge."""
         try:
             r = requests.put(url, data=data)
             if r.ok:
-                response = r.json()
                 return True
+            logging.error(f"PUT request failed. Status: {r.status_code}, Response: {r.text}")
             return False
         except Exception as e:
+            logging.exception(f"Error sending PUT request to {url}: {e}")
             return False
 
-    def trigger_lamps(self):
-        ret = self.get_lamp(self.LAMPS[0])
-        if ret['state']['on'] == True:
-            state = True
-        else:
-            state = False
+    def trigger_lamps(self) -> dict:
+        """Toggle all lamps' state based on their current state."""
+        if not self.LAMPS:
+            return {'error': 'No lamps defined'}
+        first_lamp_state = self.get_lamp(self.LAMPS[0])['state']['on']
+        new_state = not first_lamp_state
+
         threads = []
-        for nr,lamp in enumerate(self.LAMPS):
-            t = threading.Thread(target=self.action_lamp, args=(lamp,nr,state,))
+        for lamp in self.LAMPS:
+            t = threading.Thread(target=self.action_lamp, args=(lamp, new_state))
             t.start()
             threads.append(t)
         
         for t in threads:
             t.join()
 
-        return {'state_old': state, 'state_new': not state, 'lamps': self.LAMPS}
-        
+        return {'state_old': first_lamp_state, 'state_new': new_state, 'lamps': self.LAMPS}
 
-    def trigger_lamps_reverse(self):
-        state = False
-        ret = self.get_lamp(self.LAMPS[0])
-        if ret['state']['on'] == True:
-            LAMPS = self.LAMPS[::-1] # reverse list for better effect, make sure the order is in line with the physical setup
-            state = True
-        else:
-            LAMPS = self.LAMPS
-        
+    def trigger_lamps_reverse(self) -> dict:
+        """Toggle lamps in reverse order based on their current state."""
+        if not self.LAMPS:
+            return {'error': 'No lamps defined'}
+        first_lamp_state = self.get_lamp(self.LAMPS[0])['state']['on']
+        new_state = not first_lamp_state
+        lamp_order = self.LAMPS[::-1] if first_lamp_state else self.LAMPS
+
         threads = []
-        for nr,lamp in enumerate(LAMPS):
-            t = threading.Thread(target=self.action_lamp, args=(lamp,nr,state,))
+        for lamp in lamp_order:
+            t = threading.Thread(target=self.action_lamp, args=(lamp, new_state))
             t.start()
             threads.append(t)
         
         for t in threads:
             t.join()
-        
-        return {'state_old': state, 'state_new': not state, 'lamps': LAMPS}
-    
-    def trigger_group(self):
+
+        return {'state_old': first_lamp_state, 'state_new': new_state, 'lamps': lamp_order}
+
+    def trigger_group(self) -> dict:
+        """Toggle a group of lamps."""
         return self.action_group()
