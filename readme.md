@@ -1,114 +1,103 @@
+# Smart Light Switch Integration
 
-
-```markdown
-# Hue Relay Trigger Tool
-
-This repository contains a tool for integrating Hue lamps with relays (e.g., Shelly devices) using an API. It allows you to maintain constant power to your smart lamps while still using traditional light switches. Instead of cutting the power to the lamps, a web server sends API requests to toggle the lights on or off.
+This project enables you to control your Philips Hue lamps using traditional wall switches without cutting power to the bulbs. By integrating devices like Shelly relays, your switches send commands to a server, which then controls the lights via the Hue API.
 
 ## Features
-- **Smart Switch Integration**: Keep your Hue lamps always powered and use traditional switches to trigger API calls.
-- **Room & Group Control**: Manage individual lamps or groups of lamps through defined endpoints.
-- **Environment Variables**: Configure the setup using `.env` for easy adaptation.
-- **FastAPI Framework**: A lightweight and efficient API for controlling the lights.
-- **Docker Support**: Run the service with Docker for easy deployment.
 
----
+- **Preserve Smart Bulb Functionality**: Keep your Hue lamps continuously powered to maintain smart features.
+- **Use Existing Switches**: Operate your lights with traditional wall switches.
+- **Seamless Integration**: Switches send requests to a server, which manages the lights without interrupting power.
 
-## How It Works
+## Prerequisites
 
-1. **Relay/Switch Integration**:
-   - When the relay or traditional switch is toggled, an API request is sent to the server.
-   - The server determines the current state of the lamps and toggles them accordingly.
+Before setting up, ensure you have:
 
-2. **Hue Bridge Communication**:
-   - Uses the Hue Bridge API to fetch the current state of lamps or groups and to send commands.
+- **Philips Hue Bridge**: Manages your Hue lamps.
+- **Shelly Relay (or similar)**: Installed behind your wall switches to send HTTP requests.
+- **Docker**: To run the server application.
 
-3. **Environment Configuration**:
-   - Define API keys, Hue Bridge IP, and allowed hosts in the `.env` file.
+## Setup Guide
 
----
+Follow these steps to set up the system:
 
-## Getting Started
+### 1. Clone the Repository
 
-### Prerequisites
-- Hue Bridge
-- Shelly (or similar relay device)
-- Docker (optional, for containerized deployment)
+Download the project files to your local machine:
 
-### Environment Variables
-Create an `.env` file with the following configuration:
-```env
-apikey=<YOUR_HUE_API_KEY>
-ip=<HUE_BRIDGE_IP>
-allowed_hosts=<ALLOWED_HOSTS> # Comma-separated IPs or '*' for all
+```bash
+git clone https://github.com/olizimmermann/alwayshue.git
+cd alwayshue
 ```
 
-### Build and Run with Docker
-1. **Clone the repository**:
+### 2. Configure Environment Variables
+
+Create a `.env` file in the `app` directory with the following content:
+
+```env
+apikey=YOUR_HUE_API_KEY
+ip=YOUR_HUE_BRIDGE_IP
+allowed_hosts=*
+```
+
+- `apikey`: Your Philips Hue Bridge API key.
+- `ip`: The IP address of your Hue Bridge.
+- `allowed_hosts`: Comma-separated list of IPs allowed to control the lights (use `*` to allow all).
+
+### 3. Build and Run the Docker Container
+
+Ensure Docker is installed on your system. Then, build and run the container:
+
+```bash
+docker-compose up --build -d
+```
+
+- This command builds the Docker image and starts the server in detached mode.
+
+### 4. Configure Shelly Relay
+
+Set up your Shelly relay to send HTTP GET requests to the server when the switch is toggled:
+
+- **URL**: `http://SERVER_IP:8000/room_1` (replace `SERVER_IP` with your server's IP address).
+- **Method**: GET
+
+Repeat this configuration for each switch, adjusting the endpoint (`/room_1`, `/room_2`, etc.) as needed.
+
+## Logging
+
+The application logs its activities to `app.log` within the container. To access the logs:
+
+1. Enter the running container:
+
    ```bash
-   git clone https://github.com/olizimmermann/alwayshue.git
-   cd alwayshue
+   docker exec -it smart-light-switch_webserver_1 bash
    ```
 
-2. **Build and start the Docker container**:
+2. View the log file:
+
    ```bash
-   docker-compose up --build -d
+   cat /app/app.log
    ```
 
-3. **Access the API**:
-   The service will be available at `http://<host-ip>:8000`.
+The logging system uses rotation to prevent the log file from becoming too large, maintaining up to three backup files, each with a maximum size of 10 MB.
 
----
+## Security Considerations
 
-## API Endpoints
-### Single Lamp Control
-- **`GET /room_1`**: Toggle lamps in Room 1.
-- **`GET /room_2`**: Toggle lamps in Room 2.
+- **Allowed Hosts**: Restrict `allowed_hosts` to specific IP addresses to enhance security.
+- **API Key**: Keep your Hue API key confidential.
 
-### Group Control
-- **`GET /group_1`**: Toggle all lamps in Group 1.
+## Troubleshooting
 
-### Middleware
-- Restricts access based on allowed hosts specified in `.env`.
-
----
-
-## Benefits
-- Keeps Hue lamps always powered, preserving smart functionalities.
-- Seamlessly integrates old light switches into modern smart home setups.
-- Simple and customizable API for controlling lamps and groups.
-- Prevents unnecessary hardware replacements.
-
----
-
-## Code Overview
-
-### `main.py`
-- Defines FastAPI routes for toggling individual lamps or groups.
-- Middleware ensures environment variables and allowed hosts are correctly configured.
-
-### `hue.py`
-- Handles communication with the Hue Bridge for retrieving lamp states and sending commands.
-- Supports toggling individual lamps and groups with threading for parallel execution.
-
-### Docker
-- **Dockerfile**: Builds a lightweight Python 3.11 image with FastAPI and dependencies.
-- **docker-compose.yml**: Simplifies multi-service deployment and configuration.
-
----
+- **Connection Issues**: Ensure the server can communicate with the Hue Bridge and that the Shelly relay can reach the server.
+- **Log Files**: Check `app.log` for error messages and debugging information.
 
 ## Contributing
-Feel free to submit pull requests or create issues for improvements and bug fixes.
 
----
+Contributions are welcome! Feel free to submit issues and pull requests to improve the project.
 
 ## License
-This project is open-source and available under the [MIT License](LICENSE).
+
+This project is licensed under the MIT License.
 
 ---
 
-## Contact
-For questions or support, please reach out to `github@ozimmermann.com`.
-
-Happy Smart Switching! 🚀
-```
+By following this guide, you can integrate your existing wall switches with Philips Hue lamps, maintaining smart functionality while using familiar controls. 

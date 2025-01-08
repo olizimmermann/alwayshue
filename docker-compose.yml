@@ -1,7 +1,16 @@
+version: "3.8"
+
 services:
   webserver:
     build: .
     ports:
-      - "8000:8000"
-    restart: always
-    env_file: ./app/.env  # Optional: Define environment variables in a file
+      - "8000:8000"  # Maps container's port 8000 to host's port 8000
+    restart: always  # Ensures the container restarts automatically if it crashes
+    env_file:
+      - ./app/.env  # External environment variables file
+    logging:
+      driver: json-file  # Default logging driver
+      options:
+        max-size: "10m"  # Limit log file size
+        max-file: "3"    # Keep a maximum of 3 log files
+    user: "appuser"  # Ensures the service runs as a non-root user
