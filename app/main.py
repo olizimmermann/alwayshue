@@ -4,7 +4,7 @@ import logging
 import hue
 from logging.handlers import RotatingFileHandler
 
-app = FastAPI(title="Hue API", description="Control Philips Hue lights", version="0.1")
+app = FastAPI(title="Hue API", description="Control Philips Hue lights", version="0.1.1")
 
 # Configure logging
 handler = RotatingFileHandler("app.log", maxBytes=10*1024*1024, backupCount=3)  # 10 MB max size, 3 backups
