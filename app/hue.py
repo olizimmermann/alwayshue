@@ -43,14 +43,14 @@ class HueAction:
             logging.exception(f"Error fetching lamp {lamp}: {e}")
             return False
 
-    def action_group(self, bri: int = 255,  hue: int = 8895 , sat: int = 89) -> dict:
+    def action_group(self, bri: int = 255) -> dict:
         """Toggle group lights on or off based on current state."""
         url = f'{self.BASE_URL}groups/{self.GROUP}/action'
         group_response = self.get_group()
 
         if group_response:
             current_state = group_response['action']['on']
-            data = '{"on": false}' if current_state else '{"on": true, "bri":' + str(bri) + ', "hue":' + str(hue) + ', "sat":' + str(sat) + '}'
+            data = '{"on": false}' if current_state else '{"on": true, "bri":' + str(bri) + '}'
             success = self.send_put(url, data)
             return {
                 'state_old': current_state,
