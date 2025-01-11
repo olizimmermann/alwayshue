@@ -50,7 +50,7 @@ class HueAction:
 
         if group_response:
             current_state = group_response['action']['on']
-            data = '{"on": false}' if current_state else '{"on": true, "bri":' + bri + '}'
+            data = '{"on": false}' if current_state else '{"on": true, "bri":' + str(bri) + '}'
             success = self.send_put(url, data)
             return {
                 'state_old': current_state,
@@ -67,7 +67,7 @@ class HueAction:
         if lamp_response:
             current_state = lamp_response['state']['on']
             new_state = not current_state if state is None else state
-            data = '{"on": true, "bri":' + bri + '}' if new_state else '{"on": false}'
+            data = '{"on": true, "bri":' + str(bri) + '}' if new_state else '{"on": false}'
             return self.send_put(url, data)
         return False
 
