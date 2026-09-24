@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>alwayshue</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='14' r='9' fill='%23f5b642'/%3E%3Crect x='12' y='24' width='8' height='5' rx='1.5' fill='%23888'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/ui/static/style.css">
+  <script src="/ui/static/app.js" defer></script>
+</head>
+<body>
+  <div id="login" class="login" hidden>
+    <form id="login-form" class="login-card">
+      <div class="brand"><span class="bulb"></span>alwayshue</div>
+      <p class="muted">Admin login</p>
+      <label>Password
+        <input type="password" id="login-password" autocomplete="current-password" required autofocus>
+      </label>
+      <button class="btn primary" type="submit">Sign in</button>
+      <p id="login-error" class="error" role="alert"></p>
+    </form>
+  </div>
+
+  <div id="app" hidden>
+    <header class="topbar">
+      <div class="brand"><span class="bulb"></span>alwayshue <span id="version" class="muted small"></span></div>
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="switches" aria-selected="true">Switches</button>
+        <button role="tab" data-tab="bridge">Bridge</button>
+        <button role="tab" data-tab="security">Security</button>
+        <button role="tab" data-tab="logs">Logs</button>
+      </nav>
+      <button id="logout" class="btn ghost small">Log out</button>
+    </header>
+
+    <main>
+      <section data-panel="switches">
+        <div class="section-head">
+          <div>
+            <h2>Rooms</h2>
+            <p class="muted">A room is a set of lamps that switch together. Endpoint: <code>/room/&lt;id&gt;</code></p>
+          </div>
+          <button id="add-room" class="btn">+ Add room</button>
+        </div>
+        <div id="rooms" class="cards"></div>
+
+        <div class="section-head">
+          <div>
+            <h2>Groups</h2>
+            <p class="muted">Maps to a group/zone defined on the Hue bridge. Endpoint: <code>/group/&lt;id&gt;</code></p>
+          </div>
+          <button id="add-group" class="btn">+ Add group</button>
+        </div>
+        <div id="groups" class="cards"></div>
+      </section>
+
+      <section data-panel="bridge" hidden>
+        <div class="panel">
+          <h2>Hue Bridge</h2>
+          <div class="grid2">
+            <label>Bridge IP / hostname
+              <input id="bridge-ip" type="text" spellcheck="false" placeholder="192.168.1.2">
+            </label>
+            <label>API key <span id="api-key-status" class="pill"></span>
+              <input id="api-key" type="password" spellcheck="false" autocomplete="off" placeholder="leave empty to keep current">
+            </label>
+          </div>
+          <div class="row">
+            <button id="bridge-test" class="btn">Test connection</button>
+            <button id="bridge-pair" class="btn">Pair new key…</button>
+            <span id="bridge-result" class="muted"></span>
+          </div>
+          <p class="muted small">Pairing: press the round link button on the bridge, then click <em>Pair new key</em> within 30&nbsp;seconds. The new key is stored immediately.</p>
+        </div>
+        <div class="panel">
+          <div class="section-head tight">
+            <h2>Lights on the bridge</h2>
+            <button id="lights-refresh" class="btn small">Refresh</button>
+          </div>
+          <div class="table-wrap"><table id="lights-table"><thead><tr><th>ID</th><th>Name</th><th>Type</th><th>State</th></tr></thead><tbody></tbody></table></div>
+        </div>
+      </section>
+
+      <section data-panel="security" hidden>
+        <div class="panel">
+          <h2>Switch access</h2>
+          <p class="muted">Who may call <code>/room/…</code> and <code>/group/…</code> (your Shelly relays).</p>
+          <label>Allowed hosts <span class="muted small">— one IP or CIDR per line, <code>*</code> = everyone</span>
+            <textarea id="allowed-hosts" rows="4" spellcheck="false"></textarea>
+          </label>
+          <label>Switch key <span class="muted small">— optional, required as <code>?key=…</code> when set (min. 16 chars)</span>
+            <div class="row nowrap">
+              <input id="switch-token" type="text" spellcheck="false" autocomplete="off">
+              <button id="token-gen" class="btn small">Generate</button>
+              <button id="token-clear" class="btn ghost small">Clear</button>
+            </div>
+          </label>
+        </div>
+        <div class="panel">
+          <h2>Admin UI access</h2>
+          <label>Admin allowed hosts <span class="muted small">— who may open this UI. Your IP: <code id="client-ip"></code></span>
+            <textarea id="admin-hosts" rows="3" spellcheck="false"></textarea>
+          </label>
+        </div>
+        <form id="password-form" class="panel">
+          <h2>Change admin password</h2>
+          <div class="grid2">
+            <label>Current password <input id="pw-current" type="password" autocomplete="current-password" required></label>
+            <label>New password <span class="muted small">(min. 10 chars)</span><input id="pw-new" type="password" autocomplete="new-password" minlength="10" required></label>
+          </div>
+          <div class="row"><button class="btn" type="submit">Change password</button><span id="pw-result" class="muted"></span></div>
+        </form>
+      </section>
+
+      <section data-panel="logs" hidden>
+        <div class="panel">
+          <div class="section-head tight">
+            <h2>Activity log</h2>
+            <div class="row">
+              <label class="check"><input type="checkbox" id="logs-auto"> auto-refresh</label>
+              <button id="logs-refresh" class="btn small">Refresh</button>
+            </div>
+          </div>
+          <pre id="logs" class="logs"></pre>
+        </div>
+      </section>
+    </main>
+
+    <div id="savebar" class="savebar" hidden>
+      <span>Unsaved changes</span>
+      <button id="discard" class="btn ghost">Discard</button>
+      <button id="save" class="btn primary">Save</button>
+    </div>
+    <div id="toast" class="toast" role="status" hidden></div>
+  </div>
+</body>
+</html>
