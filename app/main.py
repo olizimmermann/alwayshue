@@ -137,7 +137,9 @@ def control_room(room_id: int, request: Request, state: Optional[str] = StatePar
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
     logging.info("Room %s (%s) triggered by %s [%s]", room_id, room.name, src_ip, state or "toggle")
-    action = _run(lambda: hue.HueAction(cfg.bridge_ip, cfg.api_key, lamps=room.lamps, **_light_kwargs(room)))
+    action = _run(lambda: hue.HueAction(cfg.bridge_ip, cfg.api_key, lamps=room.lamps,
+                                            step_delay_ms=room.step_delay_ms, reverse_off=room.reverse_off,
+                                            **_light_kwargs(room)))
     return _run(lambda: action.trigger_lamps(_parse_state(state)))
 
 
@@ -311,7 +313,9 @@ def bridge_apply(body: ApplyBody):
         raise _validation_error(e)
     if body.kind == "room":
         room = target
-        action = _run(lambda: hue.HueAction(cfg.bridge_ip, cfg.api_key, lamps=room.lamps, **_light_kwargs(room)))
+        action = _run(lambda: hue.HueAction(cfg.bridge_ip, cfg.api_key, lamps=room.lamps,
+                                            step_delay_ms=room.step_delay_ms, reverse_off=room.reverse_off,
+                                            **_light_kwargs(room)))
         return _run(lambda: action.trigger_lamps(_parse_state(body.state)))
     group = target
     action = _run(lambda: hue.HueAction(cfg.bridge_ip, cfg.api_key, group=group.group, **_light_kwargs(group)))
