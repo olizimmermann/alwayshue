@@ -80,6 +80,15 @@ Toggle logic for rooms: if **any** lamp of the room is on, all are switched off,
 
 **Sweep effect:** lamps are switched in the room's sequence order (reorder it under *Switching sequence*; chips show each lamp's position). Set *Delay (ms)* to switch one lamp every N ms (e.g. 100–200 ms to have the light run through the room). Enable *turn off in reverse order* to have it run back when switching off. With a delay of 0, all commands are sent at once and the bridge processes them in sequence order (~10 per second).
 
+## Speed: getting minimal switch delay
+
+1. **Use `?state=on` / `?state=off` URLs** where the Shelly can send separate on/off actions. alwayshue then sends lamp commands immediately (~3 ms) without reading the current state first. A plain toggle needs one small state read of the first lamp in the sequence (~30 ms).
+2. **Set *Fade (ms)* to 0** for instant switching. The Hue default is a 400 ms fade.
+3. **Delay 0** in the room's *Effect* section (no sweep).
+4. **Big rooms: use a group instead.** The bridge processes only ~10 individual light commands per second, so in a 14-lamp room the last lamp reacts ~1.3 s after the first. A `/group/<id>` endpoint sends **one** Zigbee group command and all lamps switch at the same moment.
+
+The server keeps a keep-alive connection pool to the bridge and a shared worker pool, so there is no connection or thread start-up cost per switch press.
+
 ## Logging
 
 Activity is logged to `/app/data/app.log` (rotated, 3 × 10 MB) and visible in the **Logs** tab and via `docker compose logs`.

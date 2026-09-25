@@ -170,11 +170,14 @@ function lightControls(obj, swatch) {
   const briS = slider('Brightness', obj, 'bri', 1, 254, refresh);
   const hueS = slider('Hue', obj, 'hue', 0, 65535, refresh, 'hue-track');
   const satS = slider('Saturation', obj, 'sat', 0, 254, refresh);
+  const fadeS = slider('Fade (ms)', obj, 'transition_ms', 0, 3000, refresh);
+  fadeS.input.step = 100;
+  fadeS.input.title = '0 = instant switching, bridge default is 400 ms';
   const color = h('input', { type: 'checkbox', checked: obj.use_color, onchange: () => { obj.use_color = color.checked; refresh(); } });
   const wrap = h('div', {},
     h('div', { class: 'sub' }, h('span', {}, 'Light'),
       h('label', { class: 'check' }, color, 'set color (off for white-only bulbs)')),
-    h('div', { class: 'sliders' }, briS.nodes, hueS.nodes, satS.nodes));
+    h('div', { class: 'sliders' }, briS.nodes, hueS.nodes, satS.nodes, fadeS.nodes));
   queueMicrotask(refresh);
   return wrap;
 }
@@ -320,11 +323,11 @@ function renderSwitches() {
 }
 
 $('#add-room').addEventListener('click', () => {
-  S.cfg.rooms.push({ id: nextId(S.cfg.rooms), name: `Room ${nextId(S.cfg.rooms)}`, lamps: [], step_delay_ms: 0, reverse_off: false, bri: 254, use_color: true, hue: 8895, sat: 89 });
+  S.cfg.rooms.push({ id: nextId(S.cfg.rooms), name: `Room ${nextId(S.cfg.rooms)}`, lamps: [], step_delay_ms: 0, reverse_off: false, bri: 254, use_color: true, hue: 8895, sat: 89, transition_ms: 400 });
   renderSwitches(); markDirty();
 });
 $('#add-group').addEventListener('click', () => {
-  S.cfg.groups.push({ id: nextId(S.cfg.groups), name: `Group ${nextId(S.cfg.groups)}`, group: 0, bri: 254, use_color: false, hue: 8895, sat: 89 });
+  S.cfg.groups.push({ id: nextId(S.cfg.groups), name: `Group ${nextId(S.cfg.groups)}`, group: 0, bri: 254, use_color: false, hue: 8895, sat: 89, transition_ms: 400 });
   renderSwitches(); markDirty();
 });
 $('#switch-token').addEventListener('input', renderSwitches);
