@@ -70,6 +70,16 @@ async def security_headers(request: Request, call_next):
 
 
 # ---------- helpers ----------
+def _norm_ip(value: str) -> str:
+    """Canonical IP string ('::ffff:1.2.3.4' -> '1.2.3.4'); non-IPs are returned truncated."""
+    value = value.strip()
+    try:
+        ip = ipaddress.ip_address(value)
+    except ValueError:
+        return value[:64]
+    return str(ip.ipv4_mapped or ip) if ip.version == 6 else str(ip)
+
+
 def _host_allowed(src_ip: str, allowed: List[str]) -> bool:
     if "*" in allowed:
         return True
@@ -80,8 +90,42 @@ def _host_allowed(src_ip: str, allowed: List[str]) -> bool:
     return any(ip in ipaddress.ip_network(net) for net in allowed)
 
 
+def _peer_ip(request: Request) -> str:
+    return _norm_ip(request.client.host if request.client else "")
+
+
+def client_ip(request: Request, trusted: Optional[List[str]] = None) -> str:
+    """Real client IP. Forwarded headers are honoured only if the TCP peer is a trusted proxy.
+
+    X-Forwarded-For is walked right-to-left, skipping trusted proxies; the first untrusted hop
+    is the client. Entries left of it may be forged by the client and are ignored.
+    """
+    trusted = store.get().trusted_proxies if trusted is None else trusted
+    peer = _peer_ip(request)
+    if not trusted or not _host_allowed(peer, trusted):
+        return peer
+    xff = request.headers.get("x-forwarded-for", "")
+    hops = [h for h in (x.strip() for x in xff[:2048].split(",")) if h][-20:]
+    if not hops:
+        real = request.headers.get("x-real-ip", "").strip()
+        return _norm_ip(real) if real else peer
+    for hop in reversed(hops):
+        hop = _norm_ip(hop)
+        if not _host_allowed(hop, trusted):
+            return hop
+    return _norm_ip(hops[0])
+
+
+def _is_https(request: Request) -> bool:
+    if COOKIE_SECURE or request.url.scheme == "https":
+        return True
+    trusted = store.get().trusted_proxies
+    return bool(trusted) and _host_allowed(_peer_ip(request), trusted) and \
+        request.headers.get("x-forwarded-proto", "").lower() == "https"
+
+
 def _check_host(request: Request, allowed: List[str]) -> str:
-    src_ip = request.client.host if request.client else ""
+    src_ip = client_ip(request)
     if not _host_allowed(src_ip, allowed):
         logging.warning("Unauthorized access attempt from %s to %s", src_ip, request.url.path)
         raise HTTPException(status_code=403, detail="Forbidden - Host not allowed")
@@ -167,10 +211,10 @@ def require_admin(request: Request) -> None:
             raise HTTPException(status_code=403, detail="CSRF token missing or invalid")
 
 
-def _set_session_cookie(response: Response) -> str:
+def _set_session_cookie(request: Request, response: Response) -> str:
     token, csrf = sessions.create()
     response.set_cookie(COOKIE, token, max_age=auth.SESSION_TTL, httponly=True,
-                        samesite="strict", secure=COOKIE_SECURE, path="/")
+                        samesite="strict", secure=_is_https(request), path="/")
     return csrf
 
 
@@ -187,7 +231,8 @@ class PasswordBody(BaseModel):
 def session_info(request: Request):
     src_ip = _check_host(request, store.get().admin_allowed_hosts)
     csrf = sessions.get(request.cookies.get(COOKIE))
-    return {"authenticated": bool(csrf), "csrf": csrf, "version": VERSION, "client_ip": src_ip}
+    return {"authenticated": bool(csrf), "csrf": csrf, "version": VERSION, "client_ip": src_ip,
+            "peer_ip": _peer_ip(request)}
 
 
 @app.post("/api/login")
@@ -202,13 +247,13 @@ def login(body: LoginBody, request: Request, response: Response):
         raise HTTPException(status_code=401, detail="Wrong password")
     sessions.record_success(src_ip)
     logging.info("Admin login from %s", src_ip)
-    return {"authenticated": True, "csrf": _set_session_cookie(response)}
+    return {"authenticated": True, "csrf": _set_session_cookie(request, response)}
 
 
 @app.post("/api/logout", dependencies=[Depends(require_admin)])
 def logout(request: Request, response: Response):
     sessions.destroy(request.cookies.get(COOKIE))
-    response.delete_cookie(COOKIE, path="/")
+    response.delete_cookie(COOKIE, path="/", secure=_is_https(request), httponly=True, samesite="strict")
     return {"authenticated": False}
 
 
@@ -218,8 +263,8 @@ def change_password(body: PasswordBody, request: Request, response: Response):
         raise HTTPException(status_code=400, detail="Current password is wrong")
     store.update(admin_password_hash=auth.hash_password(body.new))
     sessions.destroy_all()  # log out every other session
-    logging.info("Admin password changed from %s", request.client.host)
-    return {"csrf": _set_session_cookie(response)}
+    logging.info("Admin password changed from %s", client_ip(request))
+    return {"csrf": _set_session_cookie(request, response)}
 
 
 # ---------- admin config ----------
@@ -240,9 +285,11 @@ def get_config():
 
 @app.put("/api/config", dependencies=[Depends(require_admin)])
 def put_config(body: ConfigUpdate, request: Request):
-    if not _host_allowed(request.client.host, body.admin_allowed_hosts):
+    # Evaluate with the *new* proxy settings: removing the proxy changes which IP you appear as.
+    new_ip = client_ip(request, body.trusted_proxies)
+    if not _host_allowed(new_ip, body.admin_allowed_hosts):
         raise HTTPException(status_code=422, detail=f"Admin allowed hosts must include your own IP "
-                                                    f"({request.client.host}), otherwise you lock yourself out")
+                                                    f"({new_ip}), otherwise you lock yourself out")
     changes = body.model_dump(exclude={"api_key"})
     if body.api_key is not None:
         changes["api_key"] = body.api_key
@@ -250,7 +297,7 @@ def put_config(body: ConfigUpdate, request: Request):
         cfg = store.update(**changes)
     except ValueError as e:
         raise _validation_error(e)
-    logging.info("Configuration saved by %s", request.client.host)
+    logging.info("Configuration saved by %s", client_ip(request))
     return _public(cfg)
 
 
@@ -292,7 +339,7 @@ def bridge_pair(body: PairBody, request: Request):
         raise HTTPException(status_code=422, detail="Bridge IP required")
     key = _run(lambda: hue.pair(ip))
     cfg = store.update(bridge_ip=ip, api_key=key)
-    logging.info("Paired with bridge %s (by %s)", ip, request.client.host)
+    logging.info("Paired with bridge %s (by %s)", ip, client_ip(request))
     return _public(cfg)
 
 

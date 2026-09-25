@@ -94,6 +94,8 @@ class PublicSettings(BaseModel):
     bridge_ip: str = ""
     allowed_hosts: List[str] = Field(default_factory=lambda: ["*"], max_length=64)
     admin_allowed_hosts: List[str] = Field(default_factory=lambda: ["*"], max_length=64)
+    # Reverse proxies (e.g. Nginx Proxy Manager) whose X-Forwarded-For header is trusted.
+    trusted_proxies: List[str] = Field(default_factory=list, max_length=32)
     switch_token: str = ""
     rooms: List[Room] = Field(default_factory=list, max_length=256)
     groups: List[Group] = Field(default_factory=list, max_length=256)
@@ -107,6 +109,14 @@ class PublicSettings(BaseModel):
     @classmethod
     def _hosts(cls, v: List[str]) -> List[str]:
         return _host_list(v)
+
+    @field_validator("trusted_proxies")
+    @classmethod
+    def _proxies(cls, v: List[str]) -> List[str]:
+        entries = [x.strip() for x in v if x.strip()]
+        if "*" in entries:
+            raise ValueError("'*' is not allowed: trusting every proxy lets anyone spoof their IP")
+        return list(dict.fromkeys(validate_host_entry(x) for x in entries))
 
     @field_validator("switch_token")
     @classmethod
@@ -151,6 +161,7 @@ def _seed_from_env() -> Config:
         bridge_ip=_strip_comment(os.getenv("ip")),
         api_key=_strip_comment(os.getenv("apikey")),
         allowed_hosts=hosts,
+        trusted_proxies=[p for p in _strip_comment(os.getenv("trusted_proxies")).split(",") if p.strip()],
         # Legacy hardcoded setup from earlier versions, kept so upgrades are seamless.
         rooms=[
             Room(id=1, name="Room 1", lamps=[22, 29, 27, 28, 17, 20, 18, 19, 16, 30, 15, 21, 24, 23], reverse_off=True),

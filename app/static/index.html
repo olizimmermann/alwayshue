@@ -102,6 +102,14 @@
             <textarea id="admin-hosts" rows="3" spellcheck="false"></textarea>
           </label>
         </div>
+        <div class="panel">
+          <h2>Reverse proxy</h2>
+          <p class="muted">If alwayshue runs behind Nginx Proxy Manager (or another proxy), add the proxy's IP here. Only then is its <code>X-Forwarded-For</code> header used to find the real client IP. Never add networks that untrusted clients can connect from.</p>
+          <label>Trusted proxies <span class="muted small">— one IP or CIDR per line, empty = no proxy</span>
+            <textarea id="trusted-proxies" rows="2" spellcheck="false"></textarea>
+          </label>
+          <p class="muted small">This connection comes from <code id="peer-ip"></code>. Detected client IP: <code id="client-ip-2"></code></p>
+        </div>
         <form id="password-form" class="panel">
           <h2>Change admin password</h2>
           <div class="grid2">
