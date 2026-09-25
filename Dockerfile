@@ -1,29 +1,22 @@
 FROM python:3.11-slim
 
-# Install necessary packages and clean up
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    && pip install --no-cache-dir fastapi uvicorn requests \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Set working directory
 WORKDIR /app
 
-# Copy only the necessary files
-COPY app/main.py /app/
-COPY app/hue.py /app/
-COPY app/.env /app/
+COPY app/requirements.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Create a non-root user and give ownership of /app
+# Code only: secrets (.env) are injected at runtime via env_file, never baked into the image.
+COPY app/*.py /app/
+COPY app/static /app/static
+
 RUN useradd -m appuser \
-    && chown -R appuser:appuser /app
+    && mkdir -p /app/data \
+    && chown -R appuser:appuser /app/data
 
-# Switch to the non-root user
 USER appuser
+ENV ALWAYSHUE_DATA=/app/data
+VOLUME /app/data
 
-# Expose the application port
 EXPOSE 8000
 
-# Command to run the FastAPI server
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-
-
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header"]

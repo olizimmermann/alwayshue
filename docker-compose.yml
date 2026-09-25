@@ -1,16 +1,26 @@
-version: "3.8"
-
 services:
   webserver:
     build: .
     ports:
-      - "8000:8000"  # Maps container's port 8000 to host's port 8000
-    restart: always  # Ensures the container restarts automatically if it crashes
+      - "8000:8000"
+    restart: always
     env_file:
-      - ./app/.env  # External environment variables file
+      - path: ./app/.env   # only used to seed data/config.json on first start
+        required: false
+    volumes:
+      - alwayshue-data:/app/data   # config.json + app.log survive rebuilds
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     logging:
-      driver: json-file  # Default logging driver
+      driver: json-file
       options:
-        max-size: "10m"  # Limit log file size
-        max-file: "3"    # Keep a maximum of 3 log files
-    user: "appuser"  # Ensures the service runs as a non-root user
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  alwayshue-data:
