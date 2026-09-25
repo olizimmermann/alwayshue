@@ -62,7 +62,9 @@ class LightSettings(BaseModel):
 class Room(LightSettings):
     id: int = Field(ge=1, le=9999)
     name: str = Field("", max_length=64)
-    lamps: List[int] = Field(default_factory=list, max_length=128)
+    lamps: List[int] = Field(default_factory=list, max_length=128)  # order = switching sequence
+    step_delay_ms: int = Field(0, ge=0, le=1000)  # pause between lamps, 0 = all at once
+    reverse_off: bool = False  # switch off in reverse order
 
     @field_validator("lamps")
     @classmethod
@@ -150,8 +152,8 @@ def _seed_from_env() -> Config:
         allowed_hosts=hosts,
         # Legacy hardcoded setup from earlier versions, kept so upgrades are seamless.
         rooms=[
-            Room(id=1, name="Room 1", lamps=[22, 29, 27, 28, 17, 20, 18, 19, 16, 30, 15, 21, 24, 23]),
-            Room(id=2, name="Room 2", lamps=list(range(1, 15))),
+            Room(id=1, name="Room 1", lamps=[22, 29, 27, 28, 17, 20, 18, 19, 16, 30, 15, 21, 24, 23], reverse_off=True),
+            Room(id=2, name="Room 2", lamps=list(range(1, 15)), reverse_off=True),
         ],
         groups=[Group(id=1, name="Group 1", group=1)],
     )

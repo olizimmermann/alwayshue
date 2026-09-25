@@ -2,6 +2,7 @@
 """Minimal Philips Hue v1 API client."""
 import ipaddress
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
 
@@ -85,9 +86,12 @@ def _on_payload(bri: int, use_color: bool, hue: int, sat: int) -> dict:
 
 class HueAction:
     def __init__(self, ip: str, token: str, lamps: Optional[List[int]] = None, group: Optional[int] = None,
-                 bri: int = 254, use_color: bool = True, hue: int = 8895, sat: int = 89):
+                 bri: int = 254, use_color: bool = True, hue: int = 8895, sat: int = 89,
+                 step_delay_ms: int = 0, reverse_off: bool = False):
         self.bridge = Bridge(ip, token)
         self.LAMPS = lamps or []
+        self.step_delay = step_delay_ms / 1000
+        self.reverse_off = reverse_off
         self.GROUP = group
         self.on_payload = _on_payload(bri, use_color, hue, sat)
 
@@ -103,17 +107,25 @@ class HueAction:
         """Toggle (state=None) or explicitly switch all lamps of the room.
 
         Toggle logic: if any lamp of the room is on -> all off, else all on.
+        Lamps are switched in list order (reversed when turning off and reverse_off is set),
+        one every step_delay seconds; requests run in parallel so bridge latency doesn't add up.
         """
         if not self.LAMPS:
             return {"error": "No lamps defined"}
         all_lights = self.bridge.lights()  # one request instead of one per lamp
         any_on = any(all_lights.get(str(l), {}).get("state", {}).get("on") for l in self.LAMPS)
         new_state = (not any_on) if state is None else state
+        order = self.LAMPS[::-1] if (not new_state and self.reverse_off) else self.LAMPS
 
-        with ThreadPoolExecutor(max_workers=min(16, len(self.LAMPS))) as pool:
-            results = list(pool.map(lambda l: self._set_lamp(l, new_state), self.LAMPS))
-        failed = [l for l, ok in zip(self.LAMPS, results) if not ok]
-        return {"state_old": any_on, "state_new": new_state, "lamps": self.LAMPS, "failed": failed}
+        with ThreadPoolExecutor(max_workers=min(16, len(order))) as pool:
+            futures = []
+            for i, lamp in enumerate(order):
+                if i and self.step_delay:
+                    time.sleep(self.step_delay)
+                futures.append(pool.submit(self._set_lamp, lamp, new_state))
+            results = [f.result() for f in futures]
+        failed = [l for l, ok in zip(order, results) if not ok]
+        return {"state_old": any_on, "state_new": new_state, "lamps": order, "failed": failed}
 
     def trigger_group(self, state: Optional[bool] = None) -> dict:
         """Toggle (state=None) or explicitly switch a bridge group."""

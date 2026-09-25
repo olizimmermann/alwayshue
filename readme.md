@@ -78,6 +78,8 @@ Point the Shelly action to the URL shown on the room/group card, e.g.:
 
 Toggle logic for rooms: if **any** lamp of the room is on, all are switched off, otherwise all are switched on.
 
+**Sweep effect:** lamps are switched in the room's sequence order (reorder it under *Switching sequence*; chips show each lamp's position). Set *Delay (ms)* to switch one lamp every N ms (e.g. 100–200 ms to have the light run through the room). Enable *turn off in reverse order* to have it run back when switching off. With a delay of 0, all commands are sent at once and the bridge processes them in sequence order (~10 per second).
+
 ## Logging
 
 Activity is logged to `/app/data/app.log` (rotated, 3 × 10 MB) and visible in the **Logs** tab and via `docker compose logs`.

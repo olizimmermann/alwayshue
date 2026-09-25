@@ -217,36 +217,71 @@ function urlRow(kind, id) {
 
 function lampPicker(room) {
   const box = h('div', {});
+  const lightName = (id) => (S.lights || []).find((l) => l.id === id)?.name;
+  const move = (i, d) => {
+    const j = i + d;
+    if (j < 0 || j >= room.lamps.length) return;
+    [room.lamps[i], room.lamps[j]] = [room.lamps[j], room.lamps[i]];
+    draw(); markDirty();
+  };
   const draw = () => {
     box.replaceChildren();
-    const count = h('span', {}, `${room.lamps.length} selected`);
-    box.append(h('div', { class: 'sub' }, h('span', {}, 'Lamps'), count));
+    box.append(h('div', { class: 'sub' }, h('span', {}, 'Lamps'),
+      h('span', { class: 'small' }, S.lights ? 'click to add/remove — added lamps go to the end of the sequence' : '')));
     if (!S.lights) {
       box.append(h('input', {
-        type: 'text', value: room.lamps.join(', '), placeholder: 'lamp ids, e.g. 1, 2, 5',
-        oninput: (e) => {
-          room.lamps = e.target.value.split(/[\s,]+/).map(Number).filter((n) => Number.isInteger(n) && n > 0);
-          count.textContent = `${room.lamps.length} selected`; markDirty();
+        type: 'text', value: room.lamps.join(', '), placeholder: 'lamp ids in switching order, e.g. 1, 2, 5',
+        onchange: (e) => {
+          room.lamps = [...new Set(e.target.value.split(/[\s,]+/).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+          draw(); markDirty();
         },
-      }), h('p', { class: 'muted small' }, 'Bridge not reachable — enter lamp IDs manually.'));
-      return;
+      }), h('p', { class: 'muted small' }, 'Bridge not reachable — enter lamp IDs manually, in switching order.'));
+    } else {
+      const known = new Set(S.lights.map((l) => l.id));
+      const chips = S.lights.map((l) => {
+        const pos = room.lamps.indexOf(l.id);
+        return h('button', {
+          class: 'chip', 'aria-pressed': String(pos >= 0), title: `${l.type}${l.reachable ? '' : ' (unreachable)'}`,
+          onclick: () => {
+            room.lamps = pos >= 0 ? room.lamps.filter((x) => x !== l.id) : [...room.lamps, l.id];
+            draw(); markDirty();
+          },
+        }, pos >= 0 ? h('span', { class: 'pos' }, pos + 1) : null, l.name, h('span', { class: 'id' }, `#${l.id}`));
+      });
+      const missing = room.lamps.filter((id) => !known.has(id)).map((id) => h('button', {
+        class: 'chip missing', 'aria-pressed': 'true', title: 'Not found on bridge — click to remove',
+        onclick: () => { room.lamps = room.lamps.filter((x) => x !== id); draw(); markDirty(); },
+      }, 'missing', h('span', { class: 'id' }, `#${id}`)));
+      box.append(h('div', { class: 'chips' }, chips, missing));
     }
-    const known = new Set(S.lights.map((l) => l.id));
-    const chips = S.lights.map((l) => h('button', {
-      class: 'chip', 'aria-pressed': String(room.lamps.includes(l.id)), title: `${l.type}${l.reachable ? '' : ' (unreachable)'}`,
-      onclick: () => {
-        room.lamps = room.lamps.includes(l.id) ? room.lamps.filter((x) => x !== l.id) : [...room.lamps, l.id];
-        draw(); markDirty();
-      },
-    }, l.name, h('span', { class: 'id' }, `#${l.id}`)));
-    const missing = room.lamps.filter((id) => !known.has(id)).map((id) => h('button', {
-      class: 'chip missing', 'aria-pressed': 'true', title: 'Not found on bridge — click to remove',
-      onclick: () => { room.lamps = room.lamps.filter((x) => x !== id); draw(); markDirty(); },
-    }, 'missing', h('span', { class: 'id' }, `#${id}`)));
-    box.append(h('div', { class: 'chips' }, chips, missing));
+    if (!room.lamps.length) return;
+    const rows = room.lamps.map((id, i) => h('li', {},
+      h('span', { class: 'pos' }, i + 1),
+      h('span', { class: 'seq-name' }, lightName(id) || 'unknown', h('span', { class: 'id' }, ` #${id}`)),
+      h('button', { class: 'btn ghost small', title: 'Earlier', disabled: i === 0, onclick: () => move(i, -1) }, '▲'),
+      h('button', { class: 'btn ghost small', title: 'Later', disabled: i === room.lamps.length - 1, onclick: () => move(i, 1) }, '▼')));
+    box.append(h('details', { class: 'seq', open: box.dataset.open === '1', ontoggle: (e) => { box.dataset.open = e.target.open ? '1' : ''; } },
+      h('summary', {}, `Switching sequence (${room.lamps.length} lamps)`),
+      h('ol', {}, rows)));
   };
   draw();
   return box;
+}
+
+function sequenceControls(room) {
+  const info = h('span', { class: 'muted small' });
+  const upd = () => {
+    const total = (Math.max(room.lamps.length - 1, 0) * room.step_delay_ms) / 1000;
+    info.textContent = room.step_delay_ms ? `full sweep ≈ ${total.toFixed(1)} s` : 'all lamps at once';
+    markDirty();
+  };
+  const delay = slider('Delay (ms)', room, 'step_delay_ms', 0, 1000, upd);
+  delay.input.step = 10;
+  const rev = h('input', { type: 'checkbox', checked: room.reverse_off, onchange: () => { room.reverse_off = rev.checked; markDirty(); } });
+  queueMicrotask(upd);
+  return h('div', {},
+    h('div', { class: 'sub' }, h('span', {}, 'Effect'), h('label', { class: 'check' }, rev, 'turn off in reverse order')),
+    h('div', { class: 'sliders' }, delay.nodes), info);
 }
 
 function groupPicker(group) {
@@ -271,7 +306,7 @@ function renderSwitches() {
   rooms.replaceChildren(...S.cfg.rooms.map((room) => {
     const sw = h('div', { class: 'swatch' });
     return h('article', { class: 'card' },
-      cardHead(room, S.cfg.rooms, 'room', sw), urlRow('room', room.id), lampPicker(room), lightControls(room, sw),
+      cardHead(room, S.cfg.rooms, 'room', sw), urlRow('room', room.id), lampPicker(room), sequenceControls(room), lightControls(room, sw),
       h('div', { class: 'actions' }, testButtons('room', room)));
   }));
   if (!S.cfg.rooms.length) rooms.append(h('div', { class: 'empty' }, 'No rooms yet.'));
@@ -285,7 +320,7 @@ function renderSwitches() {
 }
 
 $('#add-room').addEventListener('click', () => {
-  S.cfg.rooms.push({ id: nextId(S.cfg.rooms), name: `Room ${nextId(S.cfg.rooms)}`, lamps: [], bri: 254, use_color: true, hue: 8895, sat: 89 });
+  S.cfg.rooms.push({ id: nextId(S.cfg.rooms), name: `Room ${nextId(S.cfg.rooms)}`, lamps: [], step_delay_ms: 0, reverse_off: false, bri: 254, use_color: true, hue: 8895, sat: 89 });
   renderSwitches(); markDirty();
 });
 $('#add-group').addEventListener('click', () => {
