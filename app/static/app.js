@@ -422,10 +422,45 @@ for (const b of document.querySelectorAll('[role=tab]')) b.addEventListener('cli
 
 window.addEventListener('beforeunload', (e) => { if (!$('#savebar').hidden) e.preventDefault(); });
 
+function inNet(ip, cidr) {
+  const toInt = (x) => x.split('.').reduce((a, o) => a * 256 + Number(o), 0);
+  const [net, bits] = cidr.split('/');
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return false;
+  const size = 2 ** (32 - Number(bits));
+  return Math.floor(toInt(ip) / size) === Math.floor(toInt(net) / size);
+}
+
+function proxyHint(s) {
+  const p = s.proxy;
+  if (!p) return '';
+  if (!p.peer_trusted) {
+    return p.x_forwarded_for || p.x_real_ip
+      ? `A proxy header is present, but ${p.peer_ip} is not trusted. Add ${p.peer_ip} to "Trusted proxies" and click Save.`
+      : 'No proxy detected. You are connected directly.';
+  }
+  if (!p.x_forwarded_for && !p.x_real_ip) return 'The trusted proxy sends no X-Forwarded-For / X-Real-IP header. Check the proxy configuration.';
+  if (inNet(s.client_ip, '172.16.0.0/12')) {
+    return `The proxy itself only sees a Docker address (${s.client_ip}), so the real IP is already lost before the proxy. ` +
+      'Usually the client connected via IPv6 (or a hairpin connection) and Docker\'s docker-proxy replaced the source IP. ' +
+      'Fix it on the Nginx Proxy Manager side (see README → "Behind a reverse proxy").';
+  }
+  return '✓ Real client IP detected.';
+}
+
 function showIps(s) {
   $('#client-ip').textContent = s.client_ip || '?';
-  $('#client-ip-2').textContent = s.client_ip || '?';
-  $('#peer-ip').textContent = s.peer_ip || '?';
+  const p = s.proxy;
+  if (!p) return;
+  const row = (k, v, cls) => h('tr', {}, h('th', {}, k), h('td', {}, h('code', { class: cls }, v || '—')));
+  $('#proxy-diag').replaceChildren(
+    row('Connection from', `${p.peer_ip} ${p.peer_trusted ? '(trusted proxy)' : '(not trusted)'}`),
+    row('X-Forwarded-For', p.x_forwarded_for),
+    row('X-Real-IP', p.x_real_ip),
+    row('X-Forwarded-Proto', p.x_forwarded_proto),
+    row('→ Detected client IP', s.client_ip));
+  const hint = proxyHint(s);
+  $('#proxy-hint').textContent = hint;
+  $('#proxy-hint').className = 'hint' + (hint.startsWith('✓') ? ' ok' : hint.startsWith('No proxy') ? '' : ' warn');
 }
 
 // ---------- boot ----------
@@ -438,6 +473,7 @@ async function start() {
   try { tab = sessionStorage.getItem('tab') || tab; } catch { /* ignore */ }
   selectTab(tab);
   loadBridge();
+  api('GET', '/api/session').then(showIps, () => {});
 }
 
 (async () => {

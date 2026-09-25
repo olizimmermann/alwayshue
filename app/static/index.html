@@ -108,7 +108,11 @@
           <label>Trusted proxies <span class="muted small">— one IP or CIDR per line, empty = no proxy</span>
             <textarea id="trusted-proxies" rows="2" spellcheck="false"></textarea>
           </label>
-          <p class="muted small">This connection comes from <code id="peer-ip"></code>. Detected client IP: <code id="client-ip-2"></code></p>
+          <div class="diag">
+            <div class="sub"><span>Diagnostics for this request</span></div>
+            <table class="kv"><tbody id="proxy-diag"></tbody></table>
+            <p id="proxy-hint" class="hint"></p>
+          </div>
         </div>
         <form id="password-form" class="panel">
           <h2>Change admin password</h2>

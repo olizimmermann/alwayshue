@@ -231,8 +231,16 @@ class PasswordBody(BaseModel):
 def session_info(request: Request):
     src_ip = _check_host(request, store.get().admin_allowed_hosts)
     csrf = sessions.get(request.cookies.get(COOKIE))
-    return {"authenticated": bool(csrf), "csrf": csrf, "version": VERSION, "client_ip": src_ip,
-            "peer_ip": _peer_ip(request)}
+    data = {"authenticated": bool(csrf), "csrf": csrf, "version": VERSION, "client_ip": src_ip}
+    if csrf:  # internal network details only for logged-in admins
+        peer, trusted = _peer_ip(request), store.get().trusted_proxies
+        data["proxy"] = {
+            "peer_ip": peer,
+            "peer_trusted": bool(trusted) and _host_allowed(peer, trusted),
+            **{h.replace("-", "_"): request.headers.get(h, "")[:512]
+               for h in ("x-forwarded-for", "x-real-ip", "x-forwarded-proto")},
+        }
+    return data
 
 
 @app.post("/api/login")

@@ -98,6 +98,30 @@ Behind a proxy, every request arrives from the proxy's IP. To have allowlists, l
 - If the proxy terminates HTTPS and sends `X-Forwarded-Proto: https`, the session cookie is automatically marked `Secure`.
 - Shelly relays can keep calling the server directly on port 8000. Direct connections are unaffected.
 
+### Troubleshooting: still a Docker IP (172.x)?
+
+Open *Security → Reverse proxy*. The diagnostics box shows what the proxy sends and suggests the fix.
+
+1. **Detected IP = "Connection from" IP** → the proxy isn't trusted yet. Add exactly that IP to *Trusted proxies* and click **Save**.
+2. **X-Forwarded-For itself contains a 172.x address** → Nginx Proxy Manager **itself** never sees the real client. Check NPM's own access log (`/data/logs/proxy-host-*_access.log` in the NPM container). If it shows 172.x too, this is confirmed, and no setting in alwayshue can recover the IP. Typical causes and fixes:
+   - **Client connects via IPv6, Docker has no IPv6 for NPM** → Docker's `docker-proxy` accepts the connection and forwards it with the gateway IP as source. Fix: enable IPv6 for Docker/NPM's network (`/etc/docker/daemon.json`: `"ipv6": true, "ip6tables": true`, plus `enable_ipv6: true` on the network), or run NPM with `network_mode: host`. Quick test: open the site via IPv4 only (e.g. `http://<IPv4>`). If the IP is correct then, IPv6 is the cause.
+   - **Hairpin**: the client is the Docker host itself, or reaches the service through the host's own address. That connection is NATed and gets the gateway IP.
+
+Recommended layout: put alwayshue on NPM's Docker network and forward to the container name. The peer is then NPM's container IP, which is the only thing you trust:
+
+```yaml
+# docker-compose.yml (alwayshue)
+services:
+  webserver:
+    networks: [npm]
+networks:
+  npm:
+    external: true
+    name: npm_default   # `docker network ls`, NPM's network
+```
+
+In NPM set *Forward Hostname* to the alwayshue container name (e.g. `alwayshue-webserver-1`) with port `8000`.
+
 ## Logging
 
 Activity is logged to `/app/data/app.log` (rotated, 3 × 10 MB) and visible in the **Logs** tab and via `docker compose logs`.

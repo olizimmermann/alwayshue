@@ -152,6 +152,13 @@ th { color: var(--muted); font-weight: 600; font-size: .8rem; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--muted); }
 .dot.on { background: var(--accent); }
 
+.diag { margin-top: 14px; }
+.kv th { width: 180px; font-weight: 500; color: var(--muted); font-size: .85rem; }
+.kv td code { word-break: break-all; }
+.hint { margin: 10px 0 0; padding: 8px 12px; border-radius: 8px; background: var(--surface-2); font-size: .88rem; }
+.hint:empty { display: none; }
+.hint.ok { color: var(--ok); }
+.hint.warn { color: var(--danger); }
 .logs { margin: 0; max-height: 65vh; overflow: auto; font: .8rem/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all; }
 .logs .warn { color: var(--danger); }
 
