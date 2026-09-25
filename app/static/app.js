@@ -97,6 +97,7 @@ function collect() {
     bridge_ip: $('#bridge-ip').value.trim(),
     allowed_hosts: lines($('#allowed-hosts').value),
     admin_allowed_hosts: lines($('#admin-hosts').value),
+    trusted_proxies: lines($('#trusted-proxies').value),
     switch_token: $('#switch-token').value.trim(),
     rooms: S.cfg.rooms,
     groups: S.cfg.groups,
@@ -121,6 +122,7 @@ function loadConfig(cfg) {
   st.className = 'pill ' + (cfg.api_key_set ? 'ok' : 'warn');
   $('#allowed-hosts').value = cfg.allowed_hosts.join('\n');
   $('#admin-hosts').value = cfg.admin_allowed_hosts.join('\n');
+  $('#trusted-proxies').value = cfg.trusted_proxies.join('\n');
   $('#switch-token').value = cfg.switch_token;
   renderSwitches();
   markDirty();
@@ -129,12 +131,13 @@ function loadConfig(cfg) {
 $('#save').addEventListener('click', (ev) => guarded(async () => {
   const cfg = await api('PUT', '/api/config', collect());
   loadConfig(cfg);
+  api('GET', '/api/session').then(showIps, () => {});
   toast('Saved');
 }, ev.currentTarget));
 
 $('#discard').addEventListener('click', () => loadConfig({ ...S.saved, api_key_set: $('#api-key-status').textContent === 'set' }));
 
-for (const id of ['#bridge-ip', '#api-key', '#allowed-hosts', '#admin-hosts', '#switch-token']) {
+for (const id of ['#bridge-ip', '#api-key', '#allowed-hosts', '#admin-hosts', '#trusted-proxies', '#switch-token']) {
   $(id).addEventListener('input', markDirty);
 }
 
@@ -419,6 +422,12 @@ for (const b of document.querySelectorAll('[role=tab]')) b.addEventListener('cli
 
 window.addEventListener('beforeunload', (e) => { if (!$('#savebar').hidden) e.preventDefault(); });
 
+function showIps(s) {
+  $('#client-ip').textContent = s.client_ip || '?';
+  $('#client-ip-2').textContent = s.client_ip || '?';
+  $('#peer-ip').textContent = s.peer_ip || '?';
+}
+
 // ---------- boot ----------
 async function start() {
   const cfg = await api('GET', '/api/config');
@@ -435,7 +444,7 @@ async function start() {
   try {
     const s = await api('GET', '/api/session');
     $('#version').textContent = 'v' + s.version;
-    $('#client-ip').textContent = s.client_ip || '?';
+    showIps(s);
     if (!s.authenticated) return showLogin();
     S.csrf = s.csrf;
     await start();

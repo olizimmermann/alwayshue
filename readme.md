@@ -89,6 +89,15 @@ Toggle logic for rooms: if **any** lamp of the room is on, all are switched off,
 
 The server keeps a keep-alive connection pool to the bridge and a shared worker pool, so there is no connection or thread start-up cost per switch press.
 
+## Behind a reverse proxy (Nginx Proxy Manager)
+
+Behind a proxy, every request arrives from the proxy's IP. To have allowlists, login throttling and logs use the **real client IP**, add the proxy under *Security → Reverse proxy → Trusted proxies*. The panel shows which IP the connection comes from (`This connection comes from …`), which is the address to enter.
+
+- Only when the direct TCP peer is a trusted proxy is `X-Forwarded-For` evaluated, right to left, skipping trusted proxies. Entries a client puts into the header itself are ignored, so the IP can't be spoofed through the proxy. `X-Real-IP` is used as a fallback.
+- **Trust exactly the NPM container IP**, not a whole Docker range. Tip: give NPM a static IP in a shared Docker network. If the port is also published on the LAN and Docker's userland proxy is active, direct LAN connections can appear with the Docker gateway IP (e.g. `172.17.0.1`). Never trust that address, because anyone reaching the published port could then forge the header.
+- If the proxy terminates HTTPS and sends `X-Forwarded-Proto: https`, the session cookie is automatically marked `Secure`.
+- Shelly relays can keep calling the server directly on port 8000. Direct connections are unaffected.
+
 ## Logging
 
 Activity is logged to `/app/data/app.log` (rotated, 3 × 10 MB) and visible in the **Logs** tab and via `docker compose logs`.
