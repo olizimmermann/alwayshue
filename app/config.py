@@ -57,6 +57,7 @@ class LightSettings(BaseModel):
     use_color: bool = True
     hue: int = Field(8895, ge=0, le=65535)
     sat: int = Field(89, ge=0, le=254)
+    transition_ms: int = Field(400, ge=0, le=10000)  # fade time, 0 = instant (bridge default 400)
 
 
 class Room(LightSettings):

@@ -7,8 +7,16 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
 
 import requests
+from requests.adapters import HTTPAdapter
 
 TIMEOUT = 4  # seconds; without a timeout a dead bridge hangs the worker forever
+
+# Shared keep-alive connections (no TCP handshake per command) and a shared worker pool
+# (no thread start-up per switch press). max_retries=1 only retries failed connects,
+# e.g. when the bridge closed an idle keep-alive connection.
+_session = requests.Session()
+_session.mount("http://", HTTPAdapter(pool_connections=4, pool_maxsize=32, max_retries=1))
+_pool = ThreadPoolExecutor(max_workers=32, thread_name_prefix="hue")
 
 
 class BridgeError(Exception):
@@ -39,7 +47,7 @@ def _parse(r: requests.Response):
 
 def _request(method: str, url: str, **kw):
     try:
-        return _parse(requests.request(method, url, timeout=TIMEOUT, **kw))
+        return _parse(_session.request(method, url, timeout=TIMEOUT, **kw))
     except requests.RequestException as e:
         # str(e) would contain the URL including the API key -> only log the type
         raise BridgeError(f"cannot reach bridge ({type(e).__name__})") from None
@@ -77,60 +85,73 @@ class Bridge:
         return self.get("groups")
 
 
-def _on_payload(bri: int, use_color: bool, hue: int, sat: int) -> dict:
-    payload = {"on": True, "bri": bri}
+def _payloads(bri: int, use_color: bool, hue: int, sat: int, transition_ms: int):
+    """Return (on_payload, off_payload). transitiontime is in 100 ms steps, bridge default is 4."""
+    tt = round(transition_ms / 100)
+    on = {"on": True, "bri": bri, "transitiontime": tt}
     if use_color:
-        payload.update(hue=hue, sat=sat)
-    return payload
+        on.update(hue=hue, sat=sat)
+    return on, {"on": False, "transitiontime": tt}
 
 
 class HueAction:
     def __init__(self, ip: str, token: str, lamps: Optional[List[int]] = None, group: Optional[int] = None,
-                 bri: int = 254, use_color: bool = True, hue: int = 8895, sat: int = 89,
+                 bri: int = 254, use_color: bool = True, hue: int = 8895, sat: int = 89, transition_ms: int = 400,
                  step_delay_ms: int = 0, reverse_off: bool = False):
         self.bridge = Bridge(ip, token)
         self.LAMPS = lamps or []
         self.step_delay = step_delay_ms / 1000
         self.reverse_off = reverse_off
         self.GROUP = group
-        self.on_payload = _on_payload(bri, use_color, hue, sat)
+        self.on_payload, self.off_payload = _payloads(bri, use_color, hue, sat, transition_ms)
 
     def _set_lamp(self, lamp: int, state: bool) -> bool:
         try:
-            self.bridge.put(f"lights/{lamp}/state", self.on_payload if state else {"on": False})
+            self.bridge.put(f"lights/{lamp}/state", self.on_payload if state else self.off_payload)
             return True
         except BridgeError as e:
             logging.error("Lamp %s: %s", lamp, e)
             return False
 
+    def _room_is_on(self) -> bool:
+        """Current room state for toggling, with as little bridge work as possible.
+
+        Reads only the first lamp of the sequence (small, fast response). Falls back to the
+        full light list (slow on a real bridge) only if that lamp is unreachable.
+        """
+        first = self.bridge.get(f"lights/{self.LAMPS[0]}").get("state", {})
+        if first.get("reachable", True):
+            return bool(first.get("on"))
+        all_lights = self.bridge.lights()
+        return any(all_lights.get(str(l), {}).get("state", {}).get("on") for l in self.LAMPS)
+
     def trigger_lamps(self, state: Optional[bool] = None) -> dict:
         """Toggle (state=None) or explicitly switch all lamps of the room.
 
-        Toggle logic: if any lamp of the room is on -> all off, else all on.
+        An explicit state sends commands immediately without reading anything first.
         Lamps are switched in list order (reversed when turning off and reverse_off is set),
         one every step_delay seconds; requests run in parallel so bridge latency doesn't add up.
         """
         if not self.LAMPS:
             return {"error": "No lamps defined"}
-        all_lights = self.bridge.lights()  # one request instead of one per lamp
-        any_on = any(all_lights.get(str(l), {}).get("state", {}).get("on") for l in self.LAMPS)
-        new_state = (not any_on) if state is None else state
+        current = self._room_is_on() if state is None else None
+        new_state = (not current) if state is None else state
         order = self.LAMPS[::-1] if (not new_state and self.reverse_off) else self.LAMPS
 
-        with ThreadPoolExecutor(max_workers=min(16, len(order))) as pool:
-            futures = []
-            for i, lamp in enumerate(order):
-                if i and self.step_delay:
-                    time.sleep(self.step_delay)
-                futures.append(pool.submit(self._set_lamp, lamp, new_state))
-            results = [f.result() for f in futures]
-        failed = [l for l, ok in zip(order, results) if not ok]
-        return {"state_old": any_on, "state_new": new_state, "lamps": order, "failed": failed}
+        futures = []
+        for i, lamp in enumerate(order):
+            if i and self.step_delay:
+                time.sleep(self.step_delay)
+            futures.append(_pool.submit(self._set_lamp, lamp, new_state))
+        failed = [l for l, f in zip(order, futures) if not f.result()]
+        return {"state_old": current, "state_new": new_state, "lamps": order, "failed": failed}
 
     def trigger_group(self, state: Optional[bool] = None) -> dict:
-        """Toggle (state=None) or explicitly switch a bridge group."""
-        grp = self.bridge.get(f"groups/{self.GROUP}")
-        current = grp.get("state", {}).get("any_on", grp.get("action", {}).get("on", False))
+        """Toggle (state=None) or explicitly switch a bridge group (one command for all lamps)."""
+        current = None
+        if state is None:
+            grp = self.bridge.get(f"groups/{self.GROUP}")
+            current = grp.get("state", {}).get("any_on", grp.get("action", {}).get("on", False))
         new_state = (not current) if state is None else state
-        self.bridge.put(f"groups/{self.GROUP}/action", self.on_payload if new_state else {"on": False})
+        self.bridge.put(f"groups/{self.GROUP}/action", self.on_payload if new_state else self.off_payload)
         return {"state_old": current, "state_new": new_state, "group": self.GROUP}

@@ -93,7 +93,7 @@ def _parse_state(state: Optional[str]) -> Optional[bool]:
 
 
 def _light_kwargs(s: LightSettings) -> dict:
-    return dict(bri=s.bri, use_color=s.use_color, hue=s.hue, sat=s.sat)
+    return dict(bri=s.bri, use_color=s.use_color, hue=s.hue, sat=s.sat, transition_ms=s.transition_ms)
 
 
 def _run(fn):
